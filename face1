@@ -1,0 +1,96 @@
+# -*- coding:utf-8 -*-
+
+import face_recognition
+import cv2
+import numpy as np
+from face_encode import FaceCode
+from read_img import read_name_list
+from put_hanzi import put_hanzi
+
+
+class FaceRecognition:
+    def __init__(self):
+        self.face_path = 'faces'
+        self.face_code = FaceCode(model_path='models', face_path=self.face_path)
+        self.known_face_encodings = []
+        self.known_face_names = []
+
+    def load_face_codes(self):
+        self.known_face_encodings = self.face_code.read()
+        self.known_face_names = read_name_list(self.face_path)
+
+    def show_rate(self, rates=None, title='Rate'):
+        rates = list(rates)
+        h = 300
+        w = 400
+        img = np.zeros((h, w, 3), np.uint8)
+        # if not rates:
+        #     rates = [0.6, 0.7, 0.9]
+        if rates:
+            if len(self.known_face_names) <= 4:
+                num = 4
+            else:
+                num = len(self.known_face_names)
+            for rate in rates:
+                i = rates.index(rate)
+                cv2.rectangle(img, (int((w - 5) // num * i) + 5, 5 + int((h - 5) * (1 - rate))),
+                              (int((w - 5) // num * (i + 1)), h - 5 - 20), (255, 255, 255),
+                              cv2.FILLED)
+                img = put_hanzi(img, self.known_face_names[i],
+                                axis=(int((w - 5) // num * (rates.index(rate))) + 15, h - 3 - 20))
+            cv2.line(img, (5, int((h - 5) * (1 - 0.4))), (w - 5, int((h - 5) * (1 - 0.4))), (0, 0, 255), )
+            cv2.imshow(title, img)
+
+    def start_rec(self):
+        face_locations = []
+        face_encodings = []
+        face_names = []
+        process_this_frame = True
+        video_capture = cv2.VideoCapture(0)
+        titles = []
+        while True:
+            ret, frame = video_capture.read()
+            small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
+            # Convert the image from BGR color (which OpenCV uses) to RGB color (which face_recognition uses)
+            rgb_small_frame = small_frame[:, :, ::-1]
+            if process_this_frame:
+                face_locations = face_recognition.face_locations(rgb_small_frame)  # 定位人脸
+                face_encodings = face_recognition.face_encodings(rgb_small_frame, face_locations)  # 计算人脸的值
+                face_names = []
+                for j, face_encoding in enumerate(face_encodings):
+
+                    # See if the face is a match for the known face(s)
+                    matches = face_recognition.compare_faces(self.known_face_encodings, face_encoding)
+                    min_index = np.argmin(matches)
+                    name = "Unknown"
+                    if matches[min_index] < 0.45:
+                        name = self.known_face_names[min_index]
+
+                    self.show_rate(matches, str(j))
+
+                    face_names.append(name)
+                print(face_names)
+            process_this_frame = not process_this_frame
+            for (top, right, bottom, left), name in zip(face_locations, face_names):
+                top *= 4
+                right *= 4
+                bottom *= 4
+                left *= 4
+                # 画个方形
+                cv2.rectangle(frame, (left, top), (right, bottom), (0, 0, 255), 2)
+                # 画个方形给名字做准备
+                cv2.rectangle(frame, (left, bottom - 35), (right, bottom), (0, 0, 255), cv2.FILLED)
+                frame = put_hanzi(frame, name, (left + 6, bottom - 30), (255, 255, 255), 25)
+            # 显示结果
+            cv2.imshow('人脸检测', frame)
+            if cv2.waitKey(1) & 0xFF == ord(' '):
+                break
+        video_capture.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    fr = FaceRecognition()
+    fr.load_face_codes()
+    # fr.show_rate()
+    fr.start_rec()
